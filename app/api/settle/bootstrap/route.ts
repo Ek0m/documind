@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { settle } from '@/lib/settle'
+import { settle, handleSettleError } from '@/lib/settle'
 
 export async function GET() {
   try {
@@ -7,7 +7,7 @@ export async function GET() {
     const bootstrap = await settle.billing.bootstrap(userId)
     return NextResponse.json({ ok: true, data: bootstrap })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Bootstrap failed'
-    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+    return handleSettleError(error, 'Bootstrap failed')
   }
 }
+

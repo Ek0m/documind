@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { settle } from '@/lib/settle'
-import { InsufficientCreditsError } from 'settlesettle'
+import { settle, handleSettleError } from '@/lib/settle'
 
-const CREDIT_COST = 10
+
 
 // ── Mock AI function ──
 async function mockSummarize(text: string): Promise<string> {
@@ -29,47 +28,42 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Step 1: Debit credits BEFORE running AI
-    // If this throws InsufficientCreditsError, we never run the AI
+    // Step 1: Fetch Dynamic Pricing from SettleSettle Dashboard
+    const bootstrap = await settle.billing.bootstrap(userId)
+    const pricingRule = bootstrap.walletState.activeRules.find(rule => rule.eventType === 'DOCUMENT_SUMMARIZE')
+    const creditCost = pricingRule ? pricingRule.cost : 10 // Dashboard slider control with fallback
+
+    // Step 2: Gatekeeper Debit: Deduct dynamic amount BEFORE executing AI API
     await settle.wallet.debit(userId, {
-      amount: CREDIT_COST,
+      amount: creditCost,
       description: 'Document summary — DocuMind',
     })
 
-    // Step 2: Run mock AI (only reached if debit succeeded)
+    // Step 3: Run Operation
     const output = await mockSummarize(text)
 
-    // Step 3: Track usage event (non-blocking — never awaited)
-    settle.events.track({
+    // Step 4: Chronological Telemetry Logging (bypassing background billing)
+    await settle.events.track({
       userId,
       eventType: 'DOCUMENT_SUMMARIZE',
       quantity: 1,
-      metadata: { wordCount: text.split(' ').length, creditCost: CREDIT_COST },
+      metadata: { 
+        wordCount: text.split(' ').length, 
+        creditCost: creditCost,
+        skipBilling: true, // Prevent background auto-debit engine double billing
+      },
     })
 
-    // Step 4: Get updated balance for UI
+    // Step 5: Get updated balance for UI
     const { balance: newBalance } = await settle.wallet.getBalance(userId)
 
     return NextResponse.json({
       ok: true,
-      data: { output, creditsUsed: CREDIT_COST, newBalance },
+      data: { output, creditsUsed: creditCost, newBalance },
     })
 
   } catch (error) {
-    // This is the key case — catch and surface it to the frontend
-    if (error instanceof InsufficientCreditsError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Insufficient credits',
-          code: 'INSUFFICIENT_CREDITS',
-          currentBalance: error.currentBalance,
-          requestedAmount: error.requestedAmount,
-        },
-        { status: 402 }
-      )
-    }
-    const message = error instanceof Error ? error.message : 'Summarize failed'
-    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+    return handleSettleError(error, 'Summarize failed')
   }
 }
+

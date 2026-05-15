@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { settle } from '@/lib/settle'
+import { settle, handleSettleError } from '@/lib/settle'
 
 export async function POST() {
   try {
@@ -18,7 +18,7 @@ export async function POST() {
     return NextResponse.json({ ok: true, data: result })
 
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Ad reward failed'
-    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+    return handleSettleError(error, 'Ad reward failed')
   }
 }
+

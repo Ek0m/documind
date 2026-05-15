@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { settle } from '@/lib/settle'
+import { settle, handleSettleError } from '@/lib/settle'
 
 // Credit packages available for purchase
 const PACKAGES: Record<string, { credits: number; amountKobo: number; label: string }> = {
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     })
 
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Top-up failed'
-    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+    return handleSettleError(error, 'Top-up failed')
   }
 }
+

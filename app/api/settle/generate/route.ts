@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { settle } from '@/lib/settle'
-import { InsufficientCreditsError } from 'settlesettle'
+import { settle, handleSettleError } from '@/lib/settle'
 
-const CREDIT_COST = 15
+
 
 async function mockGenerate(prompt: string): Promise<string> {
   await new Promise((r) => setTimeout(r, 1800))
@@ -33,42 +32,41 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Debit BEFORE running AI
+    // 1. Fetch Dynamic Pricing: Retrieve exact active rule cost configured in Dashboard
+    const bootstrap = await settle.billing.bootstrap(userId)
+    const pricingRule = bootstrap.walletState.activeRules.find(rule => rule.eventType === 'DOCUMENT_GENERATE')
+    const creditCost = pricingRule ? pricingRule.cost : 15 // Dynamic rule value with code-fallback
+
+    // 2. Gatekeeper Debit: Prevent executing AI for users with insufficient funds
     await settle.wallet.debit(userId, {
-      amount: CREDIT_COST,
+      amount: creditCost,
       description: 'Document generation — DocuMind',
     })
 
+    // 3. Execute operation
     const output = await mockGenerate(prompt)
 
-    settle.events.track({
+    // 4. Telemetry Stream: Log usage without triggering background double-billing
+    await settle.events.track({
       userId,
       eventType: 'DOCUMENT_GENERATE',
       quantity: 1,
-      metadata: { promptLength: prompt.length, creditCost: CREDIT_COST },
+      metadata: { 
+        promptLength: prompt.length, 
+        creditCost: creditCost,
+        skipBilling: true, // Critical: Handled by our custom events processor flag
+      },
     })
 
     const { balance: newBalance } = await settle.wallet.getBalance(userId)
 
     return NextResponse.json({
       ok: true,
-      data: { output, creditsUsed: CREDIT_COST, newBalance },
+      data: { output, creditsUsed: creditCost, newBalance },
     })
 
   } catch (error) {
-    if (error instanceof InsufficientCreditsError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Insufficient credits',
-          code: 'INSUFFICIENT_CREDITS',
-          currentBalance: error.currentBalance,
-          requestedAmount: error.requestedAmount,
-        },
-        { status: 402 }
-      )
-    }
-    const message = error instanceof Error ? error.message : 'Generate failed'
-    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+    return handleSettleError(error, 'Generate failed')
   }
 }
+
