@@ -28,33 +28,10 @@ export default function Home() {
   const [output, setOutput]       = useState<OutputState | null>(null)
   const [error, setError]         = useState<string | null>(null)
 
-  // Modal state
+  const [paymentSuccess, setPaymentSuccess] = useState(false)
   const [showInsufficient, setShowInsufficient] = useState(false)
   const [insufficientState, setInsufficientState] = useState<InsufficientState | null>(null)
   const [showTopUp, setShowTopUp] = useState(false)
-
-  // ── On mount: sync user + bootstrap ──
-  useEffect(() => {
-    async function init() {
-      try {
-        // Sync user profile
-        await fetch('/api/settle/sync-user', { method: 'POST' })
-
-        // Bootstrap billing modal data (one round-trip)
-        const res = await fetch('/api/settle/bootstrap')
-        const json = await res.json()
-        if (json.ok) {
-          setBalance(json.data.walletState.currentBalance)
-        }
-      } catch (err) {
-        console.error('Initialization failed', err)
-      } finally {
-        setBootstrapping(false)
-        setBalanceLoading(false)
-      }
-    }
-    void init()
-  }, [])
 
   // ── Refresh balance ──
   const refreshBalance = useCallback(async () => {
@@ -69,6 +46,41 @@ export default function Home() {
       setBalanceLoading(false)
     }
   }, [])
+
+  // ── On mount: sync user + bootstrap ──
+  useEffect(() => {
+    async function init() {
+      try {
+        // Sync user profile
+        await fetch('/api/settle/sync-user', { method: 'POST' })
+
+        // Bootstrap billing modal data (one round-trip)
+        const res = await fetch('/api/settle/bootstrap')
+        const json = await res.json()
+        if (json.ok) {
+          setBalance(json.data.walletState.currentBalance)
+        }
+
+        // Check for payment success redirect
+        const urlParams = new URLSearchParams(window.location.search)
+        if (urlParams.get('success') === 'true') {
+          setPaymentSuccess(true)
+          // Refresh balance immediately to show new credits
+          void refreshBalance()
+          // Clear query param without full reload
+          window.history.replaceState({}, '', '/')
+          // Hide message after 6 seconds
+          setTimeout(() => setPaymentSuccess(false), 6000)
+        }
+      } catch (err) {
+        console.error('Initialization failed', err)
+      } finally {
+        setBootstrapping(false)
+        setBalanceLoading(false)
+      }
+    }
+    void init()
+  }, [refreshBalance])
 
   // ── Handle API response ──
   function handleActionResponse(json: Record<string, unknown>) {
@@ -160,6 +172,31 @@ export default function Home() {
         onRefresh={refreshBalance}
         onTopUp={() => setShowTopUp(true)}
       />
+
+      {/* Payment Success Toast/Banner */}
+      {paymentSuccess && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="bg-emerald-600 text-white rounded-2xl p-4 shadow-2xl shadow-emerald-500/20 border border-emerald-400/30 flex items-center gap-4 backdrop-blur-md">
+            <div className="bg-white/20 p-2 rounded-xl">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-bold text-sm">Top-up Successful!</p>
+              <p className="text-xs text-emerald-50/80">Your credit balance has been updated. Happy summarizing!</p>
+            </div>
+            <button 
+              onClick={() => setPaymentSuccess(false)}
+              className="ml-auto p-1 hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-4xl mx-auto px-4 pt-24 pb-16">
         {/* Hero with premium gradient accents */}

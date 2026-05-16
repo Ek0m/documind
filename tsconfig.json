@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "settlesettle": ["../../New folder/settlesettle-sdk/src/index.ts"]
     }
   },
   "include": [
