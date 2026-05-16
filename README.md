@@ -1,36 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DocuMind AI Suite 🧠
 
-## Getting Started
+**The Flagship Implementation of SettleSettle SDK Integration.**
 
-First, run the development server:
+DocuMind is a premium, open-source AI document toolkit built with Next.js 15+, Tailwind CSS 4, and the [SettleSettle SDK](https://settlesettle.vercel.app). It serves as a reference architecture for developers looking to implement usage-based billing, multi-rail payments (Paystack + Solana), and ad-reward monetization in their SaaS products.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## ✨ Features
+
+- **AI Document Summarization**: Instantly condense complex documents (powered by mocked LLM).
+- **Intelligent Prompt Generation**: Creative document drafting and refinement.
+- **SettleSettle Core Integration**:
+    - **One-Round-Trip Hydration**: Using `bootstrap()` to load entire wallet states and credit packages in a single request.
+    - **Zero-Config User Sync**: Automated profile provisioning and synchronization.
+    - **Dual-Rail Checkout**: Secure top-ups via **Paystack (Fiat)** and **Solana (USDC)** with real-time verification.
+    - **Ad-Reward Monetization**: Integrated Ad-Network for users to earn credits by watching premium ads.
+    - **Async Metering**: Event buffering for high-performance, non-blocking credit deductions.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework**: [Next.js 15 (App Router)](https://nextjs.org/)
+- **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
+- **Monetization**: [SettleSettle SDK v0.1.0+](https://settlesettle.vercel.app)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **Animations**: Framer Motion & CSS Micro-animations
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+
+- A [SettleSettle Developer Account](https://settlesettle.vercel.app)
+- A SettleSettle App API Key
+- Node.js 18+
+
+### 2. Environment Configuration
+
+Create a `.env.local` file in the root directory:
+
+```env
+# SettleSettle Integration
+SETTLESETTLE_API_KEY=your_api_key_here
+
+
+# Frontend configuration
+NEXT_PUBLIC_TEST_USER_ID=demo-user-123
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Installation
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 📖 Key Integration Patterns
 
-To learn more about Next.js, take a look at the following resources:
+### Initialize the SDK
+Configure the SDK once in a centralized library to enable global usage across API routes.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```typescript
+// lib/settle.ts
+import { SettleSettle } from 'settlesettle';
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+export const settle = new SettleSettle({
+  apiKey: process.env.SETTLESETTLE_API_KEY,
+  eventBuffering: {
+    enabled: true,
+    maxBatchSize: 20,
+    flushIntervalMs: 3000,
+  }
+});
+```
 
-## Deploy on Vercel
+### Metering an AI Action
+Deduct credits asynchronously while ensuring low-latency responses for your users.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```typescript
+// app/api/settle/summarize/route.ts
+const result = await settle.billing.recordAction({
+  userId: userId,
+  eventType: 'document_summarize'
+});
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Handling Redirection & Success
+DocuMind implements advanced `callbackUrl` logic to return users safely to the app after a Paystack or Solana checkout session.
+
+```typescript
+// app/api/settle/topup/route.ts
+const { checkoutUrl } = await settle.payments.initialize({
+  endUserId: userId,
+  amountKobo: pkg.priceKobo,
+  callbackUrl: `${req.nextUrl.origin}/?success=true`,
+  provider: 'paystack'
+});
+```
+
+---
+
+## 🤝 Contributing
+
+This project is a community resource. If you find a bug or have a suggestion for better integration patterns, please open an issue or submit a PR.
+
+---
+
+<p align="center">
+  Built with ❤️ by the <a href="https://settlesettle.vercel.app">SettleSettle Team</a>
+</p>
